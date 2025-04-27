@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Matter.js Touch Drag Example</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+        canvas {
+            touch-action: none; /* Important: allow touch dragging */
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+// Import Matter.js modules
+// @ts-ignore
+const Engine = Matter.Engine;
+// @ts-ignore
+const Render = Matter.Render;
+// @ts-ignore
+const World = Matter.World;
+// @ts-ignore
+const Bodies = Matter.Bodies;
+// @ts-ignore
+const Constraint = Matter.Constraint;
+// @ts-ignore
+const Mouse = Matter.Mouse;
+// @ts-ignore
+const MouseConstraint = Matter.MouseConstraint;
+// @ts-ignore
+const Events = Matter.Events;
+// @ts-ignore
+const Body = Matter.Body;
+
+// Create engine and world
+const engine = Engine.create();
+engine.world.gravity.y = 0; // Disable gravity
+
+// Create renderer
+const render = Render.create({
+    // @ts-ignore
+    element: document.body,
+    engine: engine,
+    options: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        wireframes: false,
+        background: 'black'
+    }
+});
+
+// Define the center of the circular motion
+const centerX = window.innerWidth / 2;
+const centerY = window.innerHeight / 2;
+const radius = 250; // Radius of the circular path
+
+// Create the object (representing egg whites)
+const eggWhite = Bodies.rectangle(centerX + radius, centerY, 100, 100, {
+    render: { fillStyle: 'hsl(200, 0%, 100%)' },
+    frictionAir: 0.01, // Start with low friction for high momentum
+    restitution: 0.5
+});
+eggWhite.originalFrictionAir = eggWhite.frictionAir; // Store initial friction
+World.add(engine.world, eggWhite);
+
+// Create a static center point and constrain the egg white to it
+const centerPoint = Bodies.circle(centerX, centerY, 5, { isStatic: true, render: { fillStyle: 'black' } });
+const orbitConstraint = Constraint.create({
+    bodyA: centerPoint,
+    bodyB: eggWhite,
+    length: radius,
+    stiffness: 0,
+    render: { visible: false }
+});
+World.add(engine.world, [centerPoint, orbitConstraint]);
+
+// Create mouse (and touch) constraint
+const mouse = Mouse.create(render.canvas);
+
+// Enable touch events
+mouse.element.addEventListener('touchstart', (event) => {
+    event.preventDefault();
+}, { passive: false });
+
+const mouseConstraint = MouseConstraint.create(engine, {
+    mouse: mouse,
+    constraint: {
+        stiffness: 0.005, // Initial stiffness
+        render: { visible: false }
+    }
+});
+mouseConstraint.constraint.originalStiffness = mouseConstraint.constraint.stiffness; // Store initial stiffness
+World.add(engine.world, mouseConstraint);
+
+// Track dragging and texture transition
+let whiskingProgress = 0;
+const maxWhisking = 100;
+let lastAngle = null;
+let isDragging = false;
+let cursorTrackData = [];
+let lastMouseX = null;
+let lastMouseY = null;
+let lastMouseTime = null;
+
+Events.on(engine, 'afterUpdate', () => {
+    // Calculate the current angle of the eggWhite relative to the center
+    const dx = eggWhite.position.x - centerX;
+    const dy = eggWhite.position.y - centerY;
+    const currentAngle = Math.atan2(dy, dx);
+
+    if (mouseConstraint.body === eggWhite) { // If dragging the egg white
+        isDragging = true;
+        if (lastAngle !== null) {
+            let angleDiff = currentAngle - lastAngle;
+            if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+            whiskingProgress += Math.abs(angleDiff) * 0.1;
+            if (whiskingProgress > maxWhisking) whiskingProgress = maxWhisking;
+        }
+        lastAngle = currentAngle;
+
+        const progressRatio = whiskingProgress / maxWhisking;
+        eggWhite.frictionAir = 0.01 + 0.99 * progressRatio;
+
+        const angularDamping = 0.3;
+        Body.setAngularVelocity(eggWhite, eggWhite.angularVelocity * angularDamping);
+
+        if (whiskingProgress >= maxWhisking) {
+            Body.setAngularVelocity(eggWhite, 0);
+            eggWhite.frictionAir = 0.5;
+        }
+
+        mouseConstraint.constraint.stiffness = 0.05 - 0.049 * progressRatio;
+
+        eggWhite.render.fillStyle = `hsl(200, 0%, 100%)`;
+
+        let speed = 0;
+        const now = performance.now();
+
+        if (lastMouseX !== null && lastMouseY !== null && lastMouseTime !== null) {
+            const dx = mouse.position.x - lastMouseX;
+            const dy = mouse.position.y - lastMouseY;
+            const dt = (now - lastMouseTime) / 1000;
+            if (dt > 0) {
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                speed = distance / dt;
+            }
+        }
+
+        lastMouseX = mouse.position.x;
+        lastMouseY = mouse.position.y;
+        lastMouseTime = now;
+
+        cursorTrackData.push({
+            timestamp: performance.now(),
+            whiskingProgress: whiskingProgress,
+            mouseSpeed: speed
+        });
+
+    } else if (isDragging) {
+        whiskingProgress -= 0.9;
+        if (whiskingProgress < 0) whiskingProgress = 0;
+
+        const progressRatio = whiskingProgress / maxWhisking;
+        eggWhite.frictionAir = 0.01 + 0.49 * progressRatio;
+        mouseConstraint.constraint.stiffness = 0.05 - 0.049 * progressRatio;
+        eggWhite.render.fillStyle = `hsl(200, 0%, ${50 + 30 * progressRatio}%)`;
+
+        if (whiskingProgress >= maxWhisking) {
+            Body.setAngularVelocity(eggWhite, 0);
+        }
+    }
+});
+
+Events.on(mouseConstraint, 'mouseup', () => {
+    if (isDragging) {
+        isDragging = false;
+        lastAngle = null;
+    }
+});
+
+const getTimestamp = () => new Date().toISOString();
+
+function calculateAverageSpeedByProgress(cursorTrackData) {
+    const buckets = {};
+    cursorTrackData.forEach(entry => {
+        const progressPercent = (entry.whiskingProgress / 100) * 100;
+        const bucket = Math.floor(progressPercent / 5) * 5;
+        if (!buckets[bucket]) {
+            buckets[bucket] = { totalSpeed: 0, count: 0 };
+        }
+        buckets[bucket].totalSpeed += entry.mouseSpeed;
+        buckets[bucket].count++;
+    });
+
+    const averages = {};
+    for (const bucket in buckets) {
+        averages[bucket] = buckets[bucket].totalSpeed / buckets[bucket].count;
+    }
+
+    return averages;
+}
+
+// Listen for keyboard shortcuts
+document.addEventListener('keydown', (event) => {
+    switch (event.key) {
+        case 'c':
+            console.log(`${getTimestamp()} - User noticed change at whiskingProgress: ${whiskingProgress.toFixed(2)} (${(whiskingProgress / maxWhisking * 100).toFixed(2)}%), frictionAir: ${eggWhite.frictionAir.toFixed(3)}, stiffness: ${mouseConstraint.constraint.stiffness.toFixed(4)}`);
+            break;
+        case 'd':
+            const avgSpeeds = calculateAverageSpeedByProgress(cursorTrackData);
+            console.log('Average mouse speeds by 10% progress:', avgSpeeds);
+            break;
+    }
+});
+
+// Run the renderer and engine
+Render.run(render);
+Engine.run(engine);
+
+</script>
+
+</body>
+</html>
