@@ -4,23 +4,25 @@ const Engine = Matter.Engine;
 // @ts-ignore
 const Render = Matter.Render;
 // @ts-ignore
-const World = Matter.World;
-// @ts-ignore
 const Bodies = Matter.Bodies;
 // @ts-ignore
-const Constraint = Matter.Constraint;
+const World = Matter.World;
 // @ts-ignore
 const Mouse = Matter.Mouse;
 // @ts-ignore
 const MouseConstraint = Matter.MouseConstraint;
 // @ts-ignore
+const Constraint = Matter.Constraint;
+// @ts-ignore
 const Events = Matter.Events;
 // @ts-ignore
 const Body = Matter.Body;
+// @ts-ignore
+const Vector = Matter.Vector;
 
-// Create engine and world
 const engine = Engine.create();
-engine.world.gravity.y = 0; // Disable gravity
+const world = engine.world;
+world.gravity.y = 0; 
 
 // Create renderer
 const render = Render.create({
@@ -37,189 +39,152 @@ const render = Render.create({
     }
 });
 
-// Define the center of the circular motion
+// Add static walls
+const walls = [
+    // @ts-ignore
+    Bodies.rectangle(0, window.innerHeight / 2, 10, window.innerHeight, { isStatic: true, render: { fillStyle: 'black' } }),
+    // @ts-ignore
+    Bodies.rectangle(window.innerWidth, window.innerHeight / 2, 10, window.innerHeight, { isStatic: true, render: { fillStyle: 'black' } }),
+    // @ts-ignore
+    Bodies.rectangle(window.innerWidth / 2, 0, window.innerWidth, 10, { isStatic: true, render: { fillStyle: 'black' } }),
+    // @ts-ignore
+    Bodies.rectangle(window.innerWidth / 2, window.innerHeight, window.innerWidth, 10, { isStatic: true, render: { fillStyle: 'black' } })
+];
+World.add(world, walls);
+
+// Add five vertical lines (bumps)
+const lineWidth = 1;
+const numLines = 30;
 // @ts-ignore
-const centerX = window.innerWidth / 2;
+const lineSpacing = window.innerWidth / (numLines + 1);
+const verticalLines = [];
+for (let i = 1; i <= numLines; i++) {
+    const lineX = lineSpacing * i;
+    // @ts-ignore
+    const line = Bodies.rectangle(lineX, window.innerHeight / 2, lineWidth, window.innerHeight, {
+        isStatic: true,
+        isSensor: true,
+        render: { fillStyle: 'black' }
+    });
+    verticalLines.push({ body: line, x: lineX });
+    World.add(world, line);
+}
+
+// Create 10x10 grid
+const rows = 10;
+const cols = 10;
+const squareSize = 10;
+const spacing = 7;
+const totalWidth = cols * squareSize + (cols - 1) * spacing;
+const totalHeight = rows * squareSize + (rows - 1) * spacing;
 // @ts-ignore
-const centerY = window.innerHeight / 2;
-const radius = 150; // Radius of the circular path
+const startX = (window.innerWidth - totalWidth) / 2;
+// @ts-ignore
+const startY = (window.innerHeight - totalHeight) / 2;
 
-// Create the object (representing egg whites)
-const eggWhite = Bodies.rectangle(centerX + radius, centerY, 50, 50, {
-    render: { fillStyle: 'hsl(200, 0%, 100%)' },
-    frictionAir: 0.01, // Start with low friction for high momentum
-    restitution: 0.5
+// Initialize grid array
+const grid = Array.from({ length: cols }, () => Array(rows).fill(null));
+
+// Create squares and add to world
+for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+        const x = startX + i * (squareSize + spacing) + squareSize / 2;
+        const y = startY + j * (squareSize + spacing) + squareSize / 2;
+        const body = Bodies.rectangle(x, y, squareSize, squareSize, {
+            render: { fillStyle: 'white' },
+            friction: 0,
+            frictionAir: 0,
+            restitution: 0
+        });
+        body.isScaled = false; // Track scaling state
+        body.hasResistance = false; // Track resistance state
+        body.originalFrictionAir = body.frictionAir; // Store original frictionAir
+        grid[i][j] = body;
+        World.add(world, body);
+    }
+}
+
+// Add constraints to connect squares with hidden lines
+for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+        // Horizontal constraints
+        if (i < cols - 1) {
+            const constraint = Constraint.create({
+                bodyA: grid[i][j],
+                bodyB: grid[i + 1][j],
+                length: squareSize + spacing,
+                stiffness: 0.9,
+                damping: 0.9,
+                render: { visible: false }
+            });
+            World.add(world, constraint);
+        }
+        if (j < rows - 1) {
+            const constraint = Constraint.create({
+                bodyA: grid[i][j],
+                bodyB: grid[i][j + 1],
+                length: squareSize + spacing,
+                stiffness: 0.9,
+                damping: 0.9,
+                render: { visible: false }
+            });
+            World.add(world, constraint);
+        }
+    }
+}
+
+// Scale squares and add resistance when they pass through any vertical line
+Events.on(engine, 'afterUpdate', () => {
+    for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+            const square = grid[i][j];
+            const squareX = square.position.x;
+
+            let isOnLine = false;
+            for (const line of verticalLines) {
+                const lineLeft = line.x - lineWidth / 2;
+                const lineRight = line.x + lineWidth / 2;
+                if (squareX >= lineLeft && squareX <= lineRight) {
+                    isOnLine = true;
+                    break;
+                }
+            }
+
+            if (isOnLine && !square.isScaled) {
+                Body.scale(square, 1.3, 1.3);
+                square.isScaled = true;
+            } else if (!isOnLine && square.isScaled) {
+                Body.scale(square, 1 / 1.3, 1 / 1.3);
+                square.isScaled = false;
+            }
+
+            if (isOnLine && !square.hasResistance) {
+                square.frictionAir = 1.5; 
+                square.hasResistance = true;
+            } else if (!isOnLine && square.hasResistance) {
+                square.frictionAir = square.originalFrictionAir;
+                square.hasResistance = false;
+            }
+
+            // Additional velocity damping when on the line
+            if (isOnLine) {
+                // Reduce velocity by 5% each frame to enhance slowing effect
+                Body.setVelocity(square, Vector.mult(square.velocity, 0.95));
+            }
+        }
+    }
 });
-eggWhite.originalFrictionAir = eggWhite.frictionAir; // Store initial friction
-World.add(engine.world, eggWhite);
 
-// Create a static center point and constrain the egg white to it
-const centerPoint = Bodies.circle(centerX, centerY, 5, { isStatic: true, render: { fillStyle: 'black' } });
-const orbitConstraint = Constraint.create({
-    bodyA: centerPoint,
-    bodyB: eggWhite,
-    length: radius,
-    stiffness:0,
-    render: { visible: false }
-});
-World.add(engine.world, [centerPoint, orbitConstraint]);
-
-// Add mouse constraint for dragging with adjustable stiffness
+// Add mouse constraint for dragging
 const mouse = Mouse.create(render.canvas);
 const mouseConstraint = MouseConstraint.create(engine, {
     mouse: mouse,
     constraint: {
-        stiffness: 0.005, // Initial stiffness (runny)
+        stiffness: 0.2,
         render: { visible: false }
     }
 });
-mouseConstraint.constraint.originalStiffness = mouseConstraint.constraint.stiffness; // Store initial stiffness
-World.add(engine.world, mouseConstraint);
-
-// Track dragging and texture transition
-let whiskingProgress = 0;
-const maxWhisking = 100;
-let lastAngle = null;
-let isDragging = false;
-let cursorTrackData = [];
-let lastMouseX = null;
-let lastMouseY = null;
-let lastMouseTime = null;
-
-
-Events.on(engine, 'afterUpdate', () => {
-    // Calculate the current angle of the eggWhite relative to the center
-    const dx = eggWhite.position.x - centerX;
-    const dy = eggWhite.position.y - centerY;
-    const currentAngle = Math.atan2(dy, dx);
-
-    if (mouseConstraint.body === eggWhite) { // If dragging the egg white
-        isDragging = true;
-        if (lastAngle !== null) {
-            // Calculate the angular difference (in radians)
-            let angleDiff = currentAngle - lastAngle;
-            if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-            if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-            whiskingProgress += Math.abs(angleDiff) * 0.01; // Sensitivity remains at 2
-            if (whiskingProgress > maxWhisking) whiskingProgress = maxWhisking;
-        }
-        lastAngle = currentAngle;
-
-        // Update texture (increase friction to reduce momentum)
-        const progressRatio = whiskingProgress / maxWhisking;
-        eggWhite.frictionAir = 0.01 + 0.99 * progressRatio; // 0.01 to 1.0 (increased from 0.8)
-
-        // Dampen angular velocity to enhance slowing effect
-        const angularDamping = 0.3; // More aggressive damping (reduced from 0.5)
-        Body.setAngularVelocity(eggWhite, eggWhite.angularVelocity * angularDamping);
-
-        // Stop the object completely if whiskingProgress is at maximum
-        if (whiskingProgress >= maxWhisking) {
-            Body.setAngularVelocity(eggWhite, 0);
-            eggWhite.frictionAir = 0.5; // Ensure no residual motion
-        }
-
-        // Make the square lag behind the cursor by reducing mouse constraint stiffness
-        mouseConstraint.constraint.stiffness = 0.05 - 0.049 * progressRatio; // 0.05 to 0.001 (reduced from 0.005)
-
-        // Optional: Change color to indicate texture change
-        eggWhite.render.fillStyle = `hsl(200, 0%, 100%)`; // Blue to lighter blue
-
-        let speed = 0;
-
-        // @ts-ignore
-        const now = performance.now();
-
-        if (lastMouseX !== null && lastMouseY !== null && lastMouseTime !== null) {
-            const dx = mouse.position.x - lastMouseX;
-            const dy = mouse.position.y - lastMouseY;
-            const dt = (now - lastMouseTime) / 1000; // Convert ms to seconds
-
-            if (dt > 0) {
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                speed = distance / dt; // pixels per second
-            }
-        }
-
-        // Save current for next frame
-        lastMouseX = mouse.position.x;
-        lastMouseY = mouse.position.y;
-        lastMouseTime = now;
-
-        cursorTrackData.push({
-            // @ts-ignore
-            timestamp: performance.now(), // High-resolution time
-            whiskingProgress: whiskingProgress,
-            mouseSpeed: speed
-        });
-    } else if (isDragging) {
-        // Gradually decrease whiskingProgress when not dragging
-        whiskingProgress -= 0.9; // Adjust this value to control the speed of the transition
-        if (whiskingProgress < 0) whiskingProgress = 0;
-
-        // Update properties based on the new whiskingProgress
-        const progressRatio = whiskingProgress / maxWhisking;
-        eggWhite.frictionAir = 0.01 + 0.99 * progressRatio; // Gradually decrease to 0.01
-        mouseConstraint.constraint.stiffness = 0.05 - 0.099 * progressRatio; // Gradually increase to 0.05
-        eggWhite.render.fillStyle = `hsl(200, 0%, ${50 + 30 * progressRatio}%)`; // Gradually revert to blue
-
-        // Apply stopping logic if whiskingProgress is still at maximum
-        if (whiskingProgress >= maxWhisking) {
-            Body.setAngularVelocity(eggWhite, 0);
-        }
-    }
-});
-
-Events.on(mouseConstraint, 'mouseup', () => {
-    if (isDragging) {
-        isDragging = false;
-        lastAngle = null;
-    }
-});
-
-const getTimestamp = () => new Date().toISOString();
-
-
-function calculateAverageSpeedByProgress(cursorTrackData) {
-    const buckets = {}; // Object to store speed sums and counts per bucket
-
-    // 1. Fill buckets
-    cursorTrackData.forEach(entry => {
-        const progressPercent = (entry.whiskingProgress / 100) * 100;
-        const bucket = Math.floor(progressPercent / 5) * 5; // Group into 0-9%, 10-19%, etc.
-
-        if (!buckets[bucket]) {
-            buckets[bucket] = { totalSpeed: 0, count: 0 };
-        }
-
-        buckets[bucket].totalSpeed += entry.mouseSpeed;
-        buckets[bucket].count++;
-    });
-
-    // 2. Calculate averages
-    const averages = {};
-    for (const bucket in buckets) {
-        averages[bucket] = buckets[bucket].totalSpeed / buckets[bucket].count;
-    }
-
-    return averages;
-}
-
-// @ts-ignore
-document.addEventListener('keydown', (event) => {
-    switch (event.key) {
-        case 'c': // User noticed texture change
-            // @ts-ignore
-            console.log(`${getTimestamp()} - User noticed change at whiskingProgress: ${whiskingProgress.toFixed(2)} (${(whiskingProgress / maxWhisking * 100).toFixed(2)}%), frictionAir: ${eggWhite.frictionAir.toFixed(3)}, stiffness: ${mouseConstraint.constraint.stiffness.toFixed(4)}`);
-            break;
-        case 'd': // Dump all collected cursor tracking data
-            const avgSpeeds = calculateAverageSpeedByProgress(cursorTrackData);
-            // @ts-ignore
-            console.log('Average mouse speeds by 10% progress:', avgSpeeds);
-            break;
-    }
-
-});
+World.add(world, mouseConstraint);
 
 // Run the renderer and engine
 Render.run(render);
