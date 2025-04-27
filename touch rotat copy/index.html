@@ -60,10 +60,10 @@ const render = Render.create({
 // Define the center of the circular motion
 const centerX = window.innerWidth / 2;
 const centerY = window.innerHeight / 2;
-const radius = 150; // Radius of the circular path
+const radius = 250; // Radius of the circular path
 
 // Create the object (representing egg whites)
-const eggWhite = Bodies.rectangle(centerX + radius, centerY, 50, 50, {
+const eggWhite = Bodies.rectangle(centerX + radius, centerY, 100, 100, {
     render: { fillStyle: 'hsl(200, 0%, 100%)' },
     frictionAir: 0.01, // Start with low friction for high momentum
     restitution: 0.5
