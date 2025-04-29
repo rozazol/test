@@ -151,7 +151,7 @@ canvas.addEventListener('touchend', (event) => {
         const touchEndTime = Date.now();
         if (touchEndTime - touchStartTime >= longPressDuration) {
             // Long press detected, toggle log visibility
-            logDiv.style.display = logDiv.style.display === 'none' ? 'block' : 'none';
+            //logDiv.style.display = logDiv.style.display === 'none' ? 'block' : 'none';
         }
         touchStartTime = null;
     }
