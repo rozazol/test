@@ -122,7 +122,7 @@ function log(message) {
 const copyButton = document.createElement('button');
 copyButton.innerText = 'Copy Logs';
 copyButton.style.position = 'absolute';
-copyButton.style.top = '220px'; // Below the log div
+copyButton.style.top = '600px'; // Below the log div
 copyButton.style.left = '0';
 copyButton.style.padding = '5px';
 copyButton.style.fontSize = '12px';
@@ -228,7 +228,7 @@ Events.on(engine, 'afterUpdate', () => {
         const previousBucket = currentBucket - 5;
         if (previousBucket >= 0 && previousBucket > lastLoggedBucket && speedBuckets[previousBucket]) {
             const avgSpeed = speedBuckets[previousBucket].totalSpeed / speedBuckets[previousBucket].count;
-            log(`${getTimestamp()} - Average speed for ${previousBucket}% to ${previousBucket + 5}%: ${avgSpeed.toFixed(2)} px/s`);
+            log(`${getTimestamp()} - for ${previousBucket}% to ${previousBucket + 5}%: ${avgSpeed.toFixed(2)} px/s`);
             lastLoggedBucket = previousBucket;
         }
 
@@ -292,7 +292,7 @@ function calculateAverageSpeedByProgress(cursorTrackData) {
 
     cursorTrackData.forEach(entry => {
         const progressPercent = (entry.whiskingProgress / 100) * 100;
-        const bucket = Math.floor(progressPercent / 5) * 5; // Group into by 5 percent
+        const bucket = Math.floor(progressPercent / 10) * 10; // Group into by 5 percent
 
         if (!buckets[bucket]) {
             buckets[bucket] = { totalSpeed: 0, count: 0 };
