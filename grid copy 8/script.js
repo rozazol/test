@@ -260,8 +260,15 @@ Events.on(engine, 'afterUpdate', () => {
 
         // NEW: Log the average for the last bucket when dragging stops
         const progressPercent = (whiskingProgress / maxWhisking) * 100;
-        const currentBucket = Math.floor(progressPercent / 5) * 5;
-        const previousBucket = currentBucket - 5;
+        const currentBucket = Math.floor(progressPercent);
+
+        if (!speedBuckets[currentBucket]) {
+            speedBuckets[currentBucket] = { totalSpeed: 0, count: 0 };
+        }
+        speedBuckets[currentBucket].totalSpeed += speed;
+        speedBuckets[currentBucket].count++;
+
+        const previousBucket = currentBucket - 1;
         if (previousBucket >= 0 && previousBucket > lastLoggedBucket && speedBuckets[previousBucket]) {
             const avgSpeed = speedBuckets[previousBucket].totalSpeed / speedBuckets[previousBucket].count;
             log(`${getTimestamp()} - for ${previousBucket}% to ${previousBucket + 1}%: ${avgSpeed.toFixed(2)} px/s`);
