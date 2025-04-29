@@ -271,7 +271,7 @@ Events.on(engine, 'afterUpdate', () => {
         const previousBucket = currentBucket - 1;
         if (previousBucket >= 0 && previousBucket > lastLoggedBucket && speedBuckets[previousBucket]) {
             const avgSpeed = speedBuckets[previousBucket].totalSpeed / speedBuckets[previousBucket].count;
-            log(`${getTimestamp()} - for ${previousBucket}% to ${previousBucket + 1}%: ${avgSpeed.toFixed(2)} px/s`);
+            log(`${getTimestamp()} - lala for ${previousBucket}% to ${previousBucket + 1}%: ${avgSpeed.toFixed(2)} px/s`);
             lastLoggedBucket = previousBucket;
         }
     }
