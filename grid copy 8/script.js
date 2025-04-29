@@ -66,7 +66,7 @@ World.add(engine.world, [centerPoint, orbitConstraint]);
 
 // Add mouse constraint for dragging with adjustable stiffness
 const mouse = Mouse.create(render.canvas);
-const mouseConstraint = MouseConstraint.create(engine, {
+const mouseConstraint = Matter.MouseConstraint.create(engine, {
     mouse: mouse,
     constraint: {
         stiffness: 0.005, // Initial stiffness (runny)
@@ -299,7 +299,7 @@ function calculateAverageSpeedByProgress(cursorTrackData) {
 
     cursorTrackData.forEach(entry => {
         const progressPercent = (entry.whiskingProgress / 100) * 100;
-        const bucket = Math.floor(progressPercent / 10) * 10; // Group into by 5 percent
+        const bucket = Math.floor(progressPercent / 1) * 1; // Group into 1% intervals (0, 1, 2, ..., 100)
 
         if (!buckets[bucket]) {
             buckets[bucket] = { totalSpeed: 0, count: 0 };
@@ -328,7 +328,7 @@ document.addEventListener('keydown', (event) => {
         case 'd': // tracking data
             const avgSpeeds = calculateAverageSpeedByProgress(cursorTrackData);
             // @ts-ignore
-            console.log('Average mouse speeds by 5% progress:', avgSpeeds);
+            console.log('Average mouse speeds by 1% progress:', avgSpeeds);
             break;
     }
 });
