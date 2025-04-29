@@ -86,92 +86,80 @@ let lastMouseX = null;
 let lastMouseY = null;
 let lastMouseTime = null;
 
-// NEW: Variables for silent logging and secret gesture
-let logs = []; // Array to store logs
-let touchEvents = []; // Track touch events for the secret gesture
-const doubleTapThreshold = 300; // 300ms between taps for a double-tap
-const swipeThreshold = 100; // Minimum vertical distance for a swipe down
+// NEW: Variables for touch speed logging and averaging
+let touchStartTime = null;
+const longPressDuration = 1000; // 1 second for long press to toggle logs
+let logs = []; // Array to store logs for localStorage
+let speedBuckets = {}; // Object to store speed sums and counts per bucket
+let lastLoggedBucket = -1; // Track the last bucket we logged
 
-// NEW: Log function to store in localStorage
+// NEW: Create a hidden div for logging average speeds
+const logDiv = document.createElement('div');
+logDiv.id = 'speedLog';
+logDiv.style.position = 'absolute';
+logDiv.style.top = '0';
+logDiv.style.left = '0';
+logDiv.style.background = '#f0f0f0'; // Light gray for better visibility
+logDiv.style.color = 'black';
+logDiv.style.padding = '10px';
+logDiv.style.maxHeight = '200px';
+logDiv.style.overflowY = 'scroll';
+logDiv.style.display = 'none'; // Hidden by default
+logDiv.style.zIndex = '1000'; // Ensure it’s on top
+logDiv.style.fontSize = '12px';
+logDiv.style.border = '1px solid #ccc'; // Add a border for clarity
+document.body.appendChild(logDiv);
+
+// NEW: Log function to append to the div and localStorage
 function log(message) {
     logs.push(message);
     localStorage.setItem('speedLogs', logs.join('\n')); // Save to localStorage
+    logDiv.innerHTML += message + '<br>';
+    logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll to the bottom
 }
 
-// NEW: Add touch event listeners for the secret gesture (double-tap + swipe down)
+// NEW: Add a button to copy logs to clipboard
+const copyButton = document.createElement('button');
+copyButton.innerText = 'Copy Logs';
+copyButton.style.position = 'absolute';
+copyButton.style.top = '220px'; // Below the log div
+copyButton.style.left = '0';
+copyButton.style.padding = '5px';
+copyButton.style.fontSize = '12px';
+document.body.appendChild(copyButton);
+
+copyButton.addEventListener('click', () => {
+    const logText = logs.join('\n');
+    navigator.clipboard.writeText(logText).then(() => {
+        alert('Logs copied to clipboard!');
+    }).catch(err => {
+        alert('Failed to copy logs: ' + err);
+    });
+});
+
+// NEW: Add touch event listeners to the canvas for long-press toggle
 const canvas = document.querySelector('canvas');
 canvas.addEventListener('touchstart', (event) => {
     if (event.touches.length === 1) { // Only handle single-touch
-        const touch = event.touches[0];
-        touchEvents.push({
-            time: Date.now(),
-            x: touch.clientX,
-            y: touch.clientY,
-            type: 'start'
-        });
+        touchStartTime = Date.now();
         event.preventDefault(); // Prevent scrolling
+    }
+});
+
+canvas.addEventListener('touchend', (event) => {
+    if (touchStartTime) {
+        const touchEndTime = Date.now();
+        if (touchEndTime - touchStartTime >= longPressDuration) {
+            // Long press detected, toggle log visibility
+            logDiv.style.display = logDiv.style.display === 'none' ? 'block' : 'none';
+        }
+        touchStartTime = null;
     }
 });
 
 canvas.addEventListener('touchmove', (event) => {
     if (event.touches.length === 1) {
-        const touch = event.touches[0];
-        touchEvents.push({
-            time: Date.now(),
-            x: touch.clientX,
-            y: touch.clientY,
-            type: 'move'
-        });
         event.preventDefault(); // Prevent scrolling during single-touch
-    }
-});
-
-canvas.addEventListener('touchend', (event) => {
-    touchEvents.push({
-        time: Date.now(),
-        type: 'end'
-    });
-
-    // Check for double-tap (two 'end' events within 300ms)
-    const recentEnds = touchEvents.filter(e => e.type === 'end').slice(-2);
-    const recentStarts = touchEvents.filter(e => e.type === 'start').slice(-2);
-    let isDoubleTap = false;
-    if (recentEnds.length >= 2 && recentStarts.length >= 2) {
-        const timeDiff = recentEnds[1].time - recentEnds[0].time;
-        if (timeDiff <= doubleTapThreshold && timeDiff > 0) {
-            isDoubleTap = true;
-        }
-    }
-
-    // Check for swipe down after double-tap
-    if (isDoubleTap) {
-        const lastStart = recentStarts[recentStarts.length - 1];
-        const moves = touchEvents.filter(e => e.type === 'move' && e.time > lastStart.time);
-        if (moves.length > 0) {
-            const firstY = lastStart.y;
-            const lastY = moves[moves.length - 1].y;
-            const deltaY = lastY - firstY;
-            if (deltaY > swipeThreshold) { // Swipe down detected
-                // Save logs to a downloadable file
-                const logText = localStorage.getItem('speedLogs') || '';
-                const blob = new Blob([logText], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `speed_logs_${getTimestamp().replace(/:/g, '-')}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                // Clear touch events to prevent multiple triggers
-                touchEvents = [];
-            }
-        }
-    }
-
-    // Clean up old touch events (keep only the last 10 to avoid memory buildup)
-    if (touchEvents.length > 10) {
-        touchEvents = touchEvents.slice(-10);
     }
 });
 
@@ -226,8 +214,23 @@ Events.on(engine, 'afterUpdate', () => {
             }
         }
 
-        // Log the speed to localStorage (no visible UI)
-        log(`${getTimestamp()} - Speed: ${speed.toFixed(2)} px/s, whiskingProgress: ${whiskingProgress.toFixed(2)}`);
+        // NEW: Add speed to the appropriate bucket
+        const progressPercent = (whiskingProgress / maxWhisking) * 100;
+        const currentBucket = Math.floor(progressPercent / 5) * 5; // Bucket: 0, 5, 10, ..., 95
+
+        if (!speedBuckets[currentBucket]) {
+            speedBuckets[currentBucket] = { totalSpeed: 0, count: 0 };
+        }
+        speedBuckets[currentBucket].totalSpeed += speed;
+        speedBuckets[currentBucket].count++;
+
+        // NEW: Log the average for the previous bucket when we move to a new bucket
+        const previousBucket = currentBucket - 5;
+        if (previousBucket >= 0 && previousBucket > lastLoggedBucket && speedBuckets[previousBucket]) {
+            const avgSpeed = speedBuckets[previousBucket].totalSpeed / speedBuckets[previousBucket].count;
+            log(`${getTimestamp()} - Average speed for ${previousBucket}% to ${previousBucket + 5}%: ${avgSpeed.toFixed(2)} px/s`);
+            lastLoggedBucket = previousBucket;
+        }
 
         // Save current for next frame
         lastMouseX = mouse.position.x;
@@ -253,6 +256,16 @@ Events.on(engine, 'afterUpdate', () => {
         // Apply stopping logic if whiskingProgress is still at maximum
         if (whiskingProgress >= maxWhisking) {
             Body.setAngularVelocity(eggWhite, 0);
+        }
+
+        // NEW: Log the average for the last bucket when dragging stops
+        const progressPercent = (whiskingProgress / maxWhisking) * 100;
+        const currentBucket = Math.floor(progressPercent / 5) * 5;
+        const previousBucket = currentBucket - 5;
+        if (previousBucket >= 0 && previousBucket > lastLoggedBucket && speedBuckets[previousBucket]) {
+            const avgSpeed = speedBuckets[previousBucket].totalSpeed / speedBuckets[previousBucket].count;
+            log(`${getTimestamp()} - Average speed for ${previousBucket}% to ${previousBucket + 5}%: ${avgSpeed.toFixed(2)} px/s`);
+            lastLoggedBucket = previousBucket;
         }
     }
 });
@@ -291,7 +304,7 @@ function calculateAverageSpeedByProgress(cursorTrackData) {
 
     // 2. Calculate averages
     const averages = {};
-    for (the bucket in buckets) {
+    for (const bucket in buckets) {
         averages[bucket] = buckets[bucket].totalSpeed / buckets[bucket].count;
     }
 
