@@ -216,7 +216,7 @@ Events.on(engine, 'afterUpdate', () => {
 
         // NEW: Add speed to the appropriate bucket
         const progressPercent = (whiskingProgress / maxWhisking) * 100;
-        const currentBucket = Math.floor(progressPercent / 5) * 5; // Bucket: 0, 5, 10, ..., 95
+        const currentBucket = Math.floor(progressPercent); // Bucket: 0, 5, 10, ..., 95
 
         if (!speedBuckets[currentBucket]) {
             speedBuckets[currentBucket] = { totalSpeed: 0, count: 0 };
@@ -225,10 +225,10 @@ Events.on(engine, 'afterUpdate', () => {
         speedBuckets[currentBucket].count++;
 
         // NEW: Log the average for the previous bucket when we move to a new bucket
-        const previousBucket = currentBucket - 5;
+        const previousBucket = currentBucket - 1;
         if (previousBucket >= 0 && previousBucket > lastLoggedBucket && speedBuckets[previousBucket]) {
             const avgSpeed = speedBuckets[previousBucket].totalSpeed / speedBuckets[previousBucket].count;
-            log(`${getTimestamp()} - for ${previousBucket}% to ${previousBucket + 5}%: ${avgSpeed.toFixed(2)} px/s`);
+            log(`${getTimestamp()} - for ${previousBucket}% to ${previousBucket + 1}%: ${avgSpeed.toFixed(2)} px/s`);
             lastLoggedBucket = previousBucket;
         }
 
@@ -271,7 +271,7 @@ Events.on(engine, 'afterUpdate', () => {
         const previousBucket = currentBucket - 1;
         if (previousBucket >= 0 && previousBucket > lastLoggedBucket && speedBuckets[previousBucket]) {
             const avgSpeed = speedBuckets[previousBucket].totalSpeed / speedBuckets[previousBucket].count;
-            log(`${getTimestamp()} - lala for ${previousBucket}% to ${previousBucket + 1}%: ${avgSpeed.toFixed(2)} px/s`);
+            log(`${getTimestamp()} - for ${previousBucket}% to ${previousBucket + 1}%: ${avgSpeed.toFixed(2)} px/s`);
             lastLoggedBucket = previousBucket;
         }
     }
